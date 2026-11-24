@@ -43,6 +43,7 @@ from openai.types.responses import (
     ResponseOutputMessage,
     ResponseOutputRefusal,
     ResponseOutputText,
+    ResponseReasoningItem,
 )
 from openai.types.responses.response_input_item_param import FunctionCallOutput
 
@@ -1056,3 +1057,82 @@ def test_assistant_messages_in_history():
     assert messages[1]["content"] == "Hello?"
     assert messages[2]["role"] == "user"
     assert messages[2]["content"] == "What was my Name?"
+
+
+def _assistant_output_message(text: str) -> dict[str, Any]:
+    return {
+        "id": "msg_1",
+        "type": "message",
+        "role": "assistant",
+        "status": "completed",
+        "content": [
+            {
+                "type": "output_text",
+                "text": text,
+                "annotations": [],
+                "logprobs": [],
+            }
+        ],
+    }
+
+
+def test_items_to_messages_accepts_reasoning_item_with_null_provider_data() -> None:
+    """
+    A reasoning item can persist provider_data as explicit null. dict.get returns
+    that null instead of the default, which used to raise AttributeError.
+    """
+    messages = Converter.items_to_messages(
+        [{"type": "reasoning", "id": "rs_1", "summary": [], "provider_data": None}],
+        model="gpt-4o",
+    )
+
+    assert messages == []
+
+
+def test_items_to_messages_accepts_reasoning_item_with_null_content() -> None:
+    """
+    ResponseReasoningItem.model_dump() emits content=None. Replaying that item for
+    the same chat-completions model must not iterate None.
+    """
+    dumped = ResponseReasoningItem(id="rs_1", summary=[], type="reasoning").model_dump()
+    assert dumped["content"] is None
+
+    messages = Converter.items_to_messages(
+        [
+            {
+                **dumped,
+                "provider_data": {
+                    "model": "test-model",
+                    "_chat_completions_reasoning_field": "reasoning",
+                },
+            }
+        ],
+        model="test-model",
+    )
+
+    assert messages == []
+
+
+def test_items_to_messages_does_not_treat_null_provider_model_as_a_match() -> None:
+    """
+    provider_data {"model": None} must not compare equal to a missing request model
+    and replay reasoning text onto the following assistant message.
+    """
+    messages = Converter.items_to_messages(
+        [
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [],
+                "content": [{"type": "reasoning_text", "text": "SECRET-CHAIN"}],
+                "provider_data": {
+                    "model": None,
+                    "_chat_completions_reasoning_field": "reasoning",
+                },
+            },
+            _assistant_output_message("final"),
+        ],
+        model=None,
+    )
+
+    assert messages == [{"role": "assistant", "content": "final"}]

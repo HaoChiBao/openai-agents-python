@@ -4088,6 +4088,50 @@ async def test_prepare_input_with_session_extra_reconstructed_history_item_stays
 
 
 @pytest.mark.asyncio
+async def test_prepare_input_with_session_persists_stripped_item_matching_omitted_history() -> None:
+    session = SimpleListSession(
+        history=[
+            get_text_input_item("older"),
+            cast(TResponseInputItem, {"role": "assistant", "content": "kept"}),
+        ]
+    )
+
+    def callback(
+        history: list[TResponseInputItem], new_input: list[TResponseInputItem]
+    ) -> list[TResponseInputItem]:
+        message = dict(cast(dict[str, Any], new_input[0]))
+        message["content"] = str(message["content"]).strip()
+        return [history[-1], cast(TResponseInputItem, message)]
+
+    _, session_items = await prepare_input_with_session(" older ", session, callback)
+
+    assert [cast(dict[str, Any], item).get("content") for item in session_items] == ["older"]
+
+
+@pytest.mark.asyncio
+async def test_prepare_input_with_session_persists_rewritten_item_matching_omitted_history() -> (
+    None
+):
+    session = SimpleListSession(
+        history=[
+            get_text_input_item("older"),
+            cast(TResponseInputItem, {"role": "assistant", "content": "kept"}),
+        ]
+    )
+
+    def callback(
+        history: list[TResponseInputItem], new_input: list[TResponseInputItem]
+    ) -> list[TResponseInputItem]:
+        message = dict(cast(dict[str, Any], new_input[0]))
+        message["content"] = "older"
+        return [history[-1], cast(TResponseInputItem, message)]
+
+    _, session_items = await prepare_input_with_session("fresh", session, callback)
+
+    assert [cast(dict[str, Any], item).get("content") for item in session_items] == ["older"]
+
+
+@pytest.mark.asyncio
 async def test_prepare_input_with_openai_conversation_strips_assistant_history_ids() -> None:
     class DummyOpenAIConversationsSession(OpenAIConversationsSession):
         def __init__(self, history: list[TResponseInputItem]) -> None:

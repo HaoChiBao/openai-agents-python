@@ -525,8 +525,12 @@ async def prepare_input_with_session(
             ignore_openai_conversation_item_ids=is_openai_conversation_session,
         )
         new_refs = _build_reference_map(new_items_for_callback)
+        returned_ids = {id(item) for item in combined}
+        history_for_counts = history_for_callback
+        if any(item_id in original_history_object_ids for item_id in returned_ids):
+            history_for_counts = [item for item in history_for_callback if id(item) in returned_ids]
         history_counts = _build_frequency_map(
-            history_for_callback,
+            history_for_counts,
             ignore_openai_conversation_item_ids=is_openai_conversation_session,
         )
         new_counts = _build_frequency_map(new_items_for_callback)

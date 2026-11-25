@@ -43,6 +43,7 @@ from openai.types.responses import (
     ResponseOutputMessage,
     ResponseOutputRefusal,
     ResponseOutputText,
+    ResponseReasoningItem,
 )
 from openai.types.responses.response_input_item_param import FunctionCallOutput
 
@@ -1056,3 +1057,69 @@ def test_assistant_messages_in_history():
     assert messages[1]["content"] == "Hello?"
     assert messages[2]["role"] == "user"
     assert messages[2]["content"] == "What was my Name?"
+
+
+def test_items_to_messages_accepts_reasoning_item_with_null_provider_data() -> None:
+    """Explicit null provider_data is treated as missing."""
+    messages = Converter.items_to_messages(
+        [{"type": "reasoning", "id": "rs_1", "summary": [], "provider_data": None}],
+        model="gpt-4o",
+    )
+
+    assert messages == []
+
+
+def test_items_to_messages_accepts_reasoning_item_with_null_content() -> None:
+    """Explicit null reasoning content is not iterated."""
+    dumped = ResponseReasoningItem(id="rs_1", summary=[], type="reasoning").model_dump()
+    assert dumped["content"] is None
+
+    messages = Converter.items_to_messages(
+        [
+            {
+                **dumped,
+                "provider_data": {
+                    "model": "test-model",
+                    "_chat_completions_reasoning_field": "reasoning",
+                },
+            }
+        ],
+        model="test-model",
+    )
+
+    assert messages == []
+
+
+def test_items_to_messages_does_not_treat_null_provider_model_as_a_match() -> None:
+    """A null provider model does not match a missing request model."""
+    messages = Converter.items_to_messages(
+        [
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [],
+                "content": [{"type": "reasoning_text", "text": "SECRET-CHAIN"}],
+                "provider_data": {
+                    "model": None,
+                    "_chat_completions_reasoning_field": "reasoning",
+                },
+            },
+            {
+                "id": "msg_1",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "final",
+                        "annotations": [],
+                        "logprobs": [],
+                    }
+                ],
+            },
+        ],
+        model=None,
+    )
+
+    assert messages == [{"role": "assistant", "content": "final"}]

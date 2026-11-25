@@ -936,11 +936,11 @@ class Converter:
             elif reasoning_item := cls.maybe_reasoning_message(item):
                 clear_pending_reasoning_state()
                 # Reconstruct thinking blocks from content (text) and encrypted_content (signature)
-                content_items = reasoning_item.get("content", [])
+                content_items = reasoning_item.get("content") or []
                 encrypted_content = reasoning_item.get("encrypted_content")
 
-                item_provider_data: dict[str, Any] = reasoning_item.get("provider_data", {})  # type: ignore[assignment]
-                item_model = item_provider_data.get("model", "")
+                item_provider_data: dict[str, Any] = reasoning_item.get("provider_data") or {}  # type: ignore[assignment]
+                item_model = item_provider_data.get("model") or ""
                 reasoning_field = item_provider_data.get(_CHAT_COMPLETIONS_REASONING_FIELD_KEY)
                 origin_provider_data = {
                     key: value
@@ -990,7 +990,7 @@ class Converter:
                             ):
                                 thinking_block = {
                                     "type": "thinking",
-                                    "thinking": content_item.get("text", ""),
+                                    "thinking": content_item.get("text") or "",
                                 }
                                 if signatures:
                                     thinking_block["signature"] = signatures.pop(0)
@@ -1016,7 +1016,7 @@ class Converter:
                     )
 
                 if should_replay:
-                    summary_items = reasoning_item.get("summary", [])
+                    summary_items = reasoning_item.get("summary") or []
                     if summary_items:
                         reasoning_texts = []
                         for summary_item in summary_items:

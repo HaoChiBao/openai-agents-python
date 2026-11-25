@@ -525,68 +525,15 @@ async def prepare_input_with_session(
             ignore_openai_conversation_item_ids=is_openai_conversation_session,
         )
         new_refs = _build_reference_map(new_items_for_callback)
+        returned_ids = {id(item) for item in combined}
+        history_for_counts = history_for_callback
+        if any(item_id in original_history_object_ids for item_id in returned_ids):
+            history_for_counts = [item for item in history_for_callback if id(item) in returned_ids]
         history_counts = _build_frequency_map(
-            history_for_callback,
+            history_for_counts,
             ignore_openai_conversation_item_ids=is_openai_conversation_session,
         )
         new_counts = _build_frequency_map(new_items_for_callback)
-        returned_ids = {id(item) for item in combined}
-        trimmed_new_ids: set[int] = set()
-        if len(new_items_for_callback) == 1 and any(
-            item_id in original_history_object_ids for item_id in returned_ids
-        ):
-            new_item = new_items_for_callback[0]
-            novel_items = [
-                item
-                for item in combined
-                if id(item) not in original_history_object_ids and id(item) != id(new_item)
-            ]
-            if (
-                len(novel_items) == 1
-                and id(new_item) not in returned_ids
-                and isinstance(new_item, dict)
-                and isinstance(novel_items[0], dict)
-            ):
-                novel = novel_items[0]
-                new_content = new_item.get("content")
-                novel_content = novel.get("content")
-                omitted_history_ids = {
-                    item.get("id")
-                    for item in history_for_callback
-                    if isinstance(item, dict)
-                    and id(item) not in returned_ids
-                    and isinstance(item.get("id"), str)
-                }
-                if (
-                    new_item.get("role") == "user"
-                    and novel.get("role") == "user"
-                    and novel.get("id") not in omitted_history_ids
-                    and isinstance(new_content, str)
-                    and isinstance(novel_content, str)
-                    and novel_content != new_content
-                    and novel_content == new_content.strip()
-                    and {key: value for key, value in new_item.items() if key != "content"}
-                    == {key: value for key, value in novel.items() if key != "content"}
-                ):
-                    trimmed_key = _session_item_key(
-                        novel,
-                        ignore_openai_conversation_item_ids=is_openai_conversation_session,
-                    )
-                    omitted = sum(
-                        1
-                        for item in history_for_callback
-                        if id(item) not in returned_ids
-                        and _session_item_key(
-                            item,
-                            ignore_openai_conversation_item_ids=is_openai_conversation_session,
-                        )
-                        == trimmed_key
-                    )
-                    if omitted:
-                        history_counts[trimmed_key] = max(
-                            history_counts.get(trimmed_key, 0) - omitted, 0
-                        )
-                        trimmed_new_ids.add(id(novel))
 
         appended: list[Any] = []
         for combined_index, item in enumerate(combined):
@@ -608,9 +555,6 @@ async def prepare_input_with_session(
                 continue
             if id(item) in original_history_object_ids:
                 prune_history_indexes.add(combined_index)
-                continue
-            if id(item) in trimmed_new_ids:
-                appended.append(item)
                 continue
             if history_counts.get(history_key, 0) > 0:
                 history_counts[history_key] = history_counts.get(history_key, 0) - 1

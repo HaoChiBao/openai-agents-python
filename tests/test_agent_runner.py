@@ -4088,6 +4088,200 @@ async def test_prepare_input_with_session_extra_reconstructed_history_item_stays
 
 
 @pytest.mark.asyncio
+async def test_prepare_input_with_session_persists_edited_new_item_matching_omitted_history() -> (
+    None
+):
+    lighting = "Lighting check complete."
+    sound = "Sound check complete."
+    history: list[TResponseInputItem] = [
+        cast(TResponseInputItem, {"role": "user", "content": lighting}),
+        cast(TResponseInputItem, {"role": "assistant", "content": "LIGHTING LOGGED"}),
+        cast(TResponseInputItem, {"role": "user", "content": sound}),
+        cast(TResponseInputItem, {"role": "assistant", "content": "SOUND LOGGED"}),
+    ]
+    session = SimpleListSession(history=history)
+
+    def callback(
+        history_items: list[TResponseInputItem], new_input: list[TResponseInputItem]
+    ) -> list[TResponseInputItem]:
+        cleaned: list[TResponseInputItem] = []
+        for item in new_input:
+            message = dict(cast(dict[str, Any], item))
+            message["content"] = str(message["content"]).strip()
+            cleaned.append(cast(TResponseInputItem, message))
+        return history_items[-2:] + cleaned
+
+    prepared, session_items = await prepare_input_with_session(
+        f" {lighting} ",
+        session,
+        callback,
+    )
+
+    assert [cast(dict[str, Any], item).get("content") for item in prepared] == [
+        sound,
+        "SOUND LOGGED",
+        lighting,
+    ]
+    assert [cast(dict[str, Any], item).get("content") for item in session_items] == [lighting]
+
+
+@pytest.mark.asyncio
+async def test_prepare_input_with_session_edited_new_item_keeps_other_omitted_copy_as_history() -> (
+    None
+):
+    history: list[TResponseInputItem] = [
+        cast(TResponseInputItem, {"role": "user", "content": "old"}),
+        cast(TResponseInputItem, {"role": "assistant", "content": "keep"}),
+    ]
+    session = SimpleListSession(history=history)
+
+    def callback(
+        history_items: list[TResponseInputItem], new_input: list[TResponseInputItem]
+    ) -> list[TResponseInputItem]:
+        copied = dict(cast(dict[str, Any], history_items[0]))
+        edited = dict(cast(dict[str, Any], new_input[0]))
+        edited["content"] = "fresh-edited"
+        return [
+            history_items[1],
+            cast(TResponseInputItem, copied),
+            cast(TResponseInputItem, edited),
+        ]
+
+    _, session_items = await prepare_input_with_session("fresh", session, callback)
+
+    assert [cast(dict[str, Any], item).get("content") for item in session_items] == ["fresh-edited"]
+
+
+@pytest.mark.asyncio
+async def test_prepare_input_with_session_dropped_new_item_does_not_reappend_omitted_copy() -> None:
+    history: list[TResponseInputItem] = [
+        cast(TResponseInputItem, {"role": "user", "content": "Sound check complete."}),
+        cast(TResponseInputItem, {"role": "assistant", "content": "ack"}),
+    ]
+    session = SimpleListSession(history=history)
+
+    def callback(
+        history_items: list[TResponseInputItem], new_input: list[TResponseInputItem]
+    ) -> list[TResponseInputItem]:
+        _ = new_input
+        return [
+            history_items[-1],
+            cast(TResponseInputItem, dict(cast(dict[str, Any], history_items[0]))),
+        ]
+
+    _, session_items = await prepare_input_with_session("noise", session, callback)
+
+    assert session_items == []
+
+
+@pytest.mark.asyncio
+async def test_prepare_input_with_session_persists_trimmed_item_when_history_repeats_it() -> None:
+    lighting = "Lighting check complete."
+    history: list[TResponseInputItem] = [
+        cast(TResponseInputItem, {"role": "user", "content": lighting}),
+        cast(TResponseInputItem, {"role": "assistant", "content": "LIGHTING LOGGED"}),
+        cast(TResponseInputItem, {"role": "user", "content": lighting}),
+        cast(TResponseInputItem, {"role": "assistant", "content": "LIGHTING LOGGED"}),
+        cast(TResponseInputItem, {"role": "user", "content": "Sound check complete."}),
+        cast(TResponseInputItem, {"role": "assistant", "content": "SOUND LOGGED"}),
+    ]
+    session = SimpleListSession(history=history)
+
+    def callback(
+        history_items: list[TResponseInputItem], new_input: list[TResponseInputItem]
+    ) -> list[TResponseInputItem]:
+        message = dict(cast(dict[str, Any], new_input[0]))
+        message["content"] = str(message["content"]).strip()
+        return [*history_items[-2:], cast(TResponseInputItem, message)]
+
+    _, session_items = await prepare_input_with_session(f" {lighting} ", session, callback)
+
+    assert [cast(dict[str, Any], item).get("content") for item in session_items] == [lighting]
+
+
+@pytest.mark.asyncio
+async def test_prepare_input_with_session_persists_trimmed_item_before_kept_duplicate() -> None:
+    lighting = "Lighting check complete."
+    history: list[TResponseInputItem] = [
+        cast(TResponseInputItem, {"role": "user", "content": lighting}),
+        cast(TResponseInputItem, {"role": "assistant", "content": "LIGHTING LOGGED"}),
+        cast(TResponseInputItem, {"role": "user", "content": lighting}),
+        cast(TResponseInputItem, {"role": "assistant", "content": "ack"}),
+    ]
+    session = SimpleListSession(history=history)
+
+    def callback(
+        history_items: list[TResponseInputItem], new_input: list[TResponseInputItem]
+    ) -> list[TResponseInputItem]:
+        message = dict(cast(dict[str, Any], new_input[0]))
+        message["content"] = str(message["content"]).strip()
+        return [cast(TResponseInputItem, message), *history_items[-2:]]
+
+    _, session_items = await prepare_input_with_session(f" {lighting} ", session, callback)
+
+    assert [cast(dict[str, Any], item).get("content") for item in session_items] == [lighting]
+
+
+@pytest.mark.asyncio
+async def test_prepare_input_with_session_dropped_input_does_not_save_trimmed_assistant_copy() -> (
+    None
+):
+    history: list[TResponseInputItem] = [
+        cast(TResponseInputItem, {"role": "assistant", "content": "Lighting check complete."}),
+        cast(TResponseInputItem, {"role": "user", "content": "keep"}),
+    ]
+    session = SimpleListSession(history=history)
+
+    def callback(
+        history_items: list[TResponseInputItem], new_input: list[TResponseInputItem]
+    ) -> list[TResponseInputItem]:
+        _ = new_input
+        return [
+            history_items[-1],
+            cast(TResponseInputItem, dict(cast(dict[str, Any], history_items[0]))),
+        ]
+
+    _, session_items = await prepare_input_with_session(
+        " Lighting check complete. ",
+        session,
+        callback,
+    )
+
+    assert session_items == []
+
+
+@pytest.mark.asyncio
+async def test_prepare_input_with_session_dropped_input_does_not_save_id_bearing_history_copy() -> (
+    None
+):
+    history: list[TResponseInputItem] = [
+        cast(
+            TResponseInputItem,
+            {"role": "user", "content": "Lighting check complete.", "id": "msg_1"},
+        ),
+        cast(TResponseInputItem, {"role": "assistant", "content": "ack"}),
+    ]
+    session = SimpleListSession(history=history)
+
+    def callback(
+        history_items: list[TResponseInputItem], new_input: list[TResponseInputItem]
+    ) -> list[TResponseInputItem]:
+        _ = new_input
+        return [
+            history_items[-1],
+            cast(TResponseInputItem, dict(cast(dict[str, Any], history_items[0]))),
+        ]
+
+    _, session_items = await prepare_input_with_session(
+        [{"role": "user", "content": " Lighting check complete. ", "id": "msg_1"}],
+        session,
+        callback,
+    )
+
+    assert session_items == []
+
+
+@pytest.mark.asyncio
 async def test_prepare_input_with_openai_conversation_strips_assistant_history_ids() -> None:
     class DummyOpenAIConversationsSession(OpenAIConversationsSession):
         def __init__(self, history: list[TResponseInputItem]) -> None:

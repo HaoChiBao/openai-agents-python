@@ -935,8 +935,7 @@ class Converter:
             # 7) reasoning message => extract thinking blocks if present
             elif reasoning_item := cls.maybe_reasoning_message(item):
                 clear_pending_reasoning_state()
-                # Reconstruct thinking blocks from content (text) and encrypted_content (signature).
-                # dict.get returns None for an explicit null, so use the missing-key fallback.
+                # Reconstruct thinking blocks from content (text) and encrypted_content (signature)
                 content_items = reasoning_item.get("content") or []
                 encrypted_content = reasoning_item.get("encrypted_content")
 

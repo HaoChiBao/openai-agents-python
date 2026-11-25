@@ -1059,28 +1059,8 @@ def test_assistant_messages_in_history():
     assert messages[2]["content"] == "What was my Name?"
 
 
-def _assistant_output_message(text: str) -> dict[str, Any]:
-    return {
-        "id": "msg_1",
-        "type": "message",
-        "role": "assistant",
-        "status": "completed",
-        "content": [
-            {
-                "type": "output_text",
-                "text": text,
-                "annotations": [],
-                "logprobs": [],
-            }
-        ],
-    }
-
-
 def test_items_to_messages_accepts_reasoning_item_with_null_provider_data() -> None:
-    """
-    A reasoning item can persist provider_data as explicit null. dict.get returns
-    that null instead of the default, which used to raise AttributeError.
-    """
+    """Explicit null provider_data is treated as missing."""
     messages = Converter.items_to_messages(
         [{"type": "reasoning", "id": "rs_1", "summary": [], "provider_data": None}],
         model="gpt-4o",
@@ -1090,10 +1070,7 @@ def test_items_to_messages_accepts_reasoning_item_with_null_provider_data() -> N
 
 
 def test_items_to_messages_accepts_reasoning_item_with_null_content() -> None:
-    """
-    ResponseReasoningItem.model_dump() emits content=None. Replaying that item for
-    the same chat-completions model must not iterate None.
-    """
+    """Explicit null reasoning content is not iterated."""
     dumped = ResponseReasoningItem(id="rs_1", summary=[], type="reasoning").model_dump()
     assert dumped["content"] is None
 
@@ -1114,10 +1091,7 @@ def test_items_to_messages_accepts_reasoning_item_with_null_content() -> None:
 
 
 def test_items_to_messages_does_not_treat_null_provider_model_as_a_match() -> None:
-    """
-    provider_data {"model": None} must not compare equal to a missing request model
-    and replay reasoning text onto the following assistant message.
-    """
+    """A null provider model does not match a missing request model."""
     messages = Converter.items_to_messages(
         [
             {
@@ -1130,7 +1104,20 @@ def test_items_to_messages_does_not_treat_null_provider_model_as_a_match() -> No
                     "_chat_completions_reasoning_field": "reasoning",
                 },
             },
-            _assistant_output_message("final"),
+            {
+                "id": "msg_1",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "final",
+                        "annotations": [],
+                        "logprobs": [],
+                    }
+                ],
+            },
         ],
         model=None,
     )
